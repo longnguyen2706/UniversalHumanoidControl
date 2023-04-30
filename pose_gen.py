@@ -21,7 +21,7 @@ if __name__ == "__main__":
 
     # retrieve filename
     fn = input("please enter filename for the smpl body pose: ")
-    filepath = "/home/hrl5/data/uhc_models/" + fn
+    filepath = "../data/uhc_models/" + fn
     # load in model from pkl file
     my_model = pickle.load(open(filepath, 'rb'))
 
