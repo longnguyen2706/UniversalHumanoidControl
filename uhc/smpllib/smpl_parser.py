@@ -336,7 +336,7 @@ class SMPL_Parser(_SMPL):
         """
         Pose should be batch_size x 72
         """
-        if pose.shape[1] != 72:
+        if pose.shape[0] != 72:
             pose = pose.reshape(-1, 72)
 
         pose = pose.float()
@@ -347,6 +347,12 @@ class SMPL_Parser(_SMPL):
                 th_betas = th_betas[:, :10]
 
         batch_size = pose.shape[0]
+        glob_or = pose[:, :3]
+        glob_or[0][0] = glob_or[0][0] + np.pi 
+
+        # print("th_trans from smpl_parser: ", th_trans)
+        # th_trans = np.zeros(6890)
+        # th_trans = torch.from_numpy(th_trans)
         
         smpl_output = self.forward(
             betas=th_betas,
@@ -383,10 +389,14 @@ class SMPL_Parser(_SMPL):
             channels = ["z", "y", "x"]
             return offset_smpl_dict, parents_dict, channels, self.joint_range
 
-    def get_mesh_offsets(self, betas=torch.zeros(1, 10), flatfoot=False):
+    def get_mesh_offsets(self, pose, betas=torch.zeros(1, 10), flatfoot=False):
         with torch.no_grad():
             joint_names = self.joint_names
-            verts, Jtr = self.get_joints_verts(self.zero_pose, th_betas=betas)
+            if pose is not None:
+                verts, Jtr = self.get_joints_verts(pose, th_betas=betas)
+            else:
+                verts, Jtr = self.get_joints_verts(self.zero_pose, th_betas=betas)
+            
 
             verts_np = verts.detach().cpu().numpy()
             verts = verts_np[0]

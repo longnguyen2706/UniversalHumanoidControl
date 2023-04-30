@@ -37,7 +37,7 @@ import joblib
 # from scipy.spatial.qhull import _Qhull
 from uhc.utils.flags import flags
 import cv2
-
+import pickle
 
 def parse_vec(string):
     return np.fromstring(string, sep=" ")
@@ -970,6 +970,7 @@ class Robot:
         self.beta = (torch.zeros((1, 10)).float() if self.smpl_model == "smpl" else torch.zeros((1, 16)).float())
 
         if self.smpl_model == "smpl":
+            print("in smpl_robot.py line 973\ndata_dir: ", data_dir)
             self.smpl_parser_n = SMPL_Parser(model_path=data_dir, gender="neutral")
             self.smpl_parser_m = SMPL_Parser(model_path=data_dir, gender="male")
             self.smpl_parser_f = SMPL_Parser(model_path=data_dir, gender="female")
@@ -1023,6 +1024,7 @@ class Robot:
         objs_info=None,
         obj_pose=None,
         params=None,
+        pose=None
     ):
 
         self.tree = None  # xml tree
@@ -1054,20 +1056,23 @@ class Robot:
             print(self.beta)
 
         ## Clear up beta for smpl and smplh
-        if self.smpl_model == "smpl" and self.beta.shape[1] == 16:
+        if self.smpl_model == "smpl" and self.beta.shape[1] == 16: #Samantha removed this
             self.beta = self.beta[:, :10]
             # print(f"Incorrect shape size for {self.model}!!!")
-        elif self.smpl_model == "smplh" and self.beta.shape[1] == 10:
+        elif self.smpl_model == "smplh" and self.beta.shape[1] == 10: #Samantha removed this
             self.beta = torch.hstack([self.beta, torch.zeros((1, 6)).float()])
             # print(f"Incorrect shape size for {self.model}!!!")
 
         self.remove_geoms()
         if self.mesh:
+            print("mesh is true")
             self.model_dirs.append(f"/tmp/smpl/{uuid.uuid4()}")
 
             if self.cfg.get("ball", False):
+                print("ball is true?")
                 self.skeleton = SkeletonMeshV2(self.model_dirs[-1])
             else:
+                print("\n\nsmpl_robot.py load_from_skeleton, ball was False or didn't exist\nv_template: ", v_template)
                 self.skeleton = SkeletonMesh(self.model_dirs[-1])
 
             (
@@ -1082,7 +1087,7 @@ class Robot:
                 joint_range,
                 contype,
                 conaffinity,
-            ) = (smpl_parser.get_mesh_offsets(betas=self.beta, flatfoot=self.flatfoot) if self.smpl_model != "smplx" else smpl_parser.get_mesh_offsets(v_template=v_template))
+            ) = (smpl_parser.get_mesh_offsets(pose, betas=self.beta, flatfoot=self.flatfoot) if self.smpl_model != "smplx" else smpl_parser.get_mesh_offsets(v_template=v_template))
 
             if self.rel_joint_lm:
                 joint_range["L_Knee"][0] = np.array([-np.pi / 16, np.pi / 16])
@@ -1658,7 +1663,8 @@ class Robot:
                 param_list += ["beta"]
             else:
                 beta = normalize_range(
-                    self.beta.numpy().squeeze(),
+                    # self.beta.numpy().squeeze(), # Samantha edited here
+                    np.squeeze(self.beta),
                     self.param_specs["beta"]["lb"],
                     self.param_specs["beta"]["ub"],
                 )
@@ -1721,11 +1727,39 @@ if __name__ == "__main__":
     parser.add_argument("--cfg", default="copycat_40")
     args = parser.parse_args()
 
+    #SAM added this
+    my_model = pickle.load(open("/home/hrl5/data/uhc_models/smpl_bp_ros_smpl_re2.pkl", 'rb'))
+    # my_model = pickle.load(open("/home/hrl5/Downloads/standing_neutral.pkl", 'rb'))
+   
+    print("my model keys smpl_robot line 1727: ", my_model.keys())
+    my_betas = my_model["betas"]
+    my_body_pose = np.asarray(my_model["body_pose"])
+    temp = torch.from_numpy(my_body_pose)
+    temp = torch.reshape(temp, (-1, 72))
+    # temp = np.zeros(156)
+
+    print("my body pose shape: ", my_body_pose.shape)
+
+    # ind = 0
+    # for i in my_body_pose:
+    #     temp[ind] = i
+    #     ind = ind + 1
+
+
+    # body_pose = torch.from_numpy(temp)
+    # print("body_pose: ", body_pose)
+    # print("my betas shape, smpl_robot.py: ", my_betas.shape, " array[1]: ", my_betas[1])
+    # print("human_joints_3D_est: ", my_model["human_joints_3D_est"], "\nbody pose: ", my_model["body_pose"])
+
     cfg = Config(cfg_id=args.cfg, create_dirs=False)
     cfg.robot_cfg["model"] = "smpl"
+    # cfg.robot_cfg["model"] = "smplx"
+    # sam changed this line above
+    
     cfg.robot_cfg["mesh"] = True
+    # print("cfg.robot_cfg (smpl_robot line 1739)\nbody_params: ", cfg.robot_cfg["body_params"], "\nactuator_params: ", cfg.robot_cfg["actuator_params"])
     # smpl_robot = Robot(cfg.robot_cfg, masterfoot=True)
-    smpl_robot = Robot(cfg.robot_cfg, masterfoot=False)
+    smpl_robot = Robot(cfg.robot_cfg, data_dir="/home/hrl5/data/smpl", masterfoot=False)
     # smpl_robot = Robot(cfg.robot_cfg, masterfoot=True)
     params_names = smpl_robot.get_params(get_name=True)
 
@@ -1738,7 +1772,8 @@ if __name__ == "__main__":
     # beta = relive_mocap_grad[k]['beta']
     # gender = relive_mocap_grad[k]['gender']
 
-    smpl_robot.load_from_skeleton(gender=[1])
+    smpl_robot.load_from_skeleton(gender=[1], pose=temp)
+    # smpl_robot.load_from_skeleton(gender=[1])
     smpl_robot.write_xml(f"test.xml")
     model = load_model_from_path(f"test.xml")
 
